@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+outputs/
+artifacts/spark_ui/*.png
+.DS_Store
