@@ -36,10 +36,8 @@ def download_file(url: str, target_path: str) -> str:
 def resolve_source(input_path: str | None, source_url: str, cache_dir: str) -> str:
     if input_path:
         return input_path
-
     zip_path = os.path.join(cache_dir, "online_retail.zip")
-    download_file(source_url, zip_path)
-    return zip_path
+    return download_file(source_url, zip_path)
 
 
 def extract_xlsx_if_needed(source_path: str, cache_dir: str) -> str:

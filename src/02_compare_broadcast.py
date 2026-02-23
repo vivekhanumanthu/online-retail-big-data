@@ -51,8 +51,7 @@ def main() -> None:
 
     if not os.path.exists(args.bronze_path):
         raise FileNotFoundError(
-            f"Bronze path not found: {args.bronze_path}. "
-            "Run ingestion first (src/01_ingest.py) or pass the correct --bronze_path."
+            f"Bronze path not found: {args.bronze_path}. Run src/01_ingest.py first or pass correct --bronze_path."
         )
 
     os.makedirs(os.path.dirname(args.summary_csv), exist_ok=True)
@@ -78,8 +77,6 @@ def main() -> None:
         writer.writerows(rows)
 
     print(f"Comparison complete. Summary: {args.summary_csv}")
-    for r in rows:
-        print(f"mode={r['mode']} success={r['success']} runtime_sec={r['runtime_sec']}")
 
 
 if __name__ == "__main__":

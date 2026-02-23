@@ -23,9 +23,3 @@ The pipeline converts transaction logs into actionable retention and cost-effici
 ## Insight 5: Operational Decisioning
 - Region/country level performance and risk scores support targeted retention campaigns.
 - Use expected profit metric from evaluation output for campaign threshold selection.
-
-## Final Recommendations
-1. Use tuned distributed RF (`mllib_rf_tuned`) for primary deployment.
-2. Keep strict ingestion validation and quarantine monitoring.
-3. Run broadcast and non-broadcast comparisons as regression checks after pipeline changes.
-4. Select cluster profile by cost-per-1000-rows under SLA constraints.

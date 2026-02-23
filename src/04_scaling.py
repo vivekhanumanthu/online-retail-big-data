@@ -26,17 +26,15 @@ def workload(df: DataFrame, n_partitions: int) -> int:
 
 
 def run_case(df: DataFrame, mode: str, resources: str, sample_fraction: float, n_partitions: int) -> Tuple[str, str, float, int, float]:
-    test_df = df.sample(withReplacement=False, fraction=sample_fraction, seed=42) if sample_fraction < 1.0 else df
-
+    test_df = df.sample(False, sample_fraction, 42) if sample_fraction < 1.0 else df
     start = time.perf_counter()
-    result_count = workload(test_df, n_partitions=n_partitions)
+    result_count = workload(test_df, n_partitions)
     sec = time.perf_counter() - start
 
     e = int(resources.split("_")[0].replace("E", ""))
     c = int(resources.split("_")[1].replace("C", ""))
     m = int(resources.split("_")[2].replace("M", ""))
-    cost_per_hour = 0.03 * e * c + 0.004 * e * m
-    est_cost = cost_per_hour * (sec / 3600)
+    est_cost = (0.03 * e * c + 0.004 * e * m) * (sec / 3600)
 
     return mode, resources, sec, result_count, est_cost
 
@@ -59,11 +57,7 @@ def main() -> None:
         for resources, n_partitions in [("E4_C4_M16", 120), ("E8_C4_M16", 240), ("E12_C4_M16", 360)]:
             strong_cases.append(run_case(df, "strong", resources, sample_fraction=0.6, n_partitions=n_partitions))
 
-        for resources, frac, n_partitions in [
-            ("E4_C4_M16", 0.2, 120),
-            ("E8_C4_M16", 0.4, 240),
-            ("E12_C4_M16", 0.6, 360),
-        ]:
+        for resources, frac, n_partitions in [("E4_C4_M16", 0.2, 120), ("E8_C4_M16", 0.4, 240), ("E12_C4_M16", 0.6, 360)]:
             weak_cases.append(run_case(df, "weak", resources, sample_fraction=frac, n_partitions=n_partitions))
 
         rows = strong_cases + weak_cases
@@ -89,11 +83,7 @@ def main() -> None:
             input_path=args.gold_path,
             output_path=args.output_path,
             row_count=out_df.count(),
-            extra={
-                "dataset": "UCI Online Retail",
-                "strong_cases": str(len(strong_cases)),
-                "weak_cases": str(len(weak_cases)),
-            },
+            extra={"dataset": "UCI Online Retail", "strong_cases": str(len(strong_cases)), "weak_cases": str(len(weak_cases))},
         )
 
         print("Scaling analysis complete")

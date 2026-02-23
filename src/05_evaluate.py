@@ -27,6 +27,7 @@ def build_training_frame(df: DataFrame) -> DataFrame:
     transformed = BasketSignalTransformer().transform(df)
     idx_region = StringIndexer(inputCol="region", outputCol="region_idx", handleInvalid="keep")
     idx_country = StringIndexer(inputCol="country", outputCol="country_idx", handleInvalid="keep")
+
     region_model = idx_region.fit(transformed)
     indexed = region_model.transform(transformed)
     country_model = idx_country.fit(indexed)
@@ -75,10 +76,11 @@ def temporal_split(df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
         )
 
     q1, q2 = quantiles
-    train = scored.filter(F.col("event_ts") <= q1)
-    valid = scored.filter((F.col("event_ts") > q1) & (F.col("event_ts") <= q2))
-    test = scored.filter(F.col("event_ts") > q2)
-    return train, valid, test
+    return (
+        scored.filter(F.col("event_ts") <= q1),
+        scored.filter((F.col("event_ts") > q1) & (F.col("event_ts") <= q2)),
+        scored.filter(F.col("event_ts") > q2),
+    )
 
 
 def stratified_sample(df: DataFrame, ratio: float = 0.9) -> DataFrame:
@@ -99,8 +101,6 @@ def bootstrap_ci(pred_df: DataFrame, n_bootstrap: int = 60) -> Tuple[float, floa
 
 
 def business_value(pred_df: DataFrame) -> float:
-    # Economics example for retention campaign:
-    # TP=+30, FP=-5, FN=-20, TN=+2
     confusion = (
         pred_df.withColumn("label", F.col("target_repeat_30d").cast("int"))
         .withColumn("pred", F.col("prediction").cast("int"))
@@ -171,11 +171,7 @@ def main() -> None:
             input_path=args.features_path,
             output_path=args.output_path,
             row_count=test_df.count(),
-            extra={
-                "dataset": "UCI Online Retail",
-                "target": "target_repeat_30d",
-                "bootstrap": "n=60",
-            },
+            extra={"dataset": "UCI Online Retail", "target": "target_repeat_30d", "bootstrap": "n=60"},
         )
 
         print("Evaluation complete")

@@ -22,11 +22,6 @@ from spark_utils import build_spark, log_lineage, safe_stop
 
 
 class BasketSignalTransformer(Transformer):
-    """Domain-specific retail features for basket value and intensity."""
-
-    def __init__(self):
-        super().__init__()
-
     def _transform(self, dataset: DataFrame) -> DataFrame:
         return (
             dataset.withColumn("avg_item_value", F.col("invoice_total") / F.greatest(F.col("total_units"), F.lit(1)))
@@ -41,10 +36,11 @@ def temporal_split(df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
     quantiles = ordered.approxQuantile("event_ts", [0.7, 0.85], 0.01)
     if len(quantiles) == 2:
         q1, q2 = quantiles
-        train = ordered.filter(F.col("event_ts") <= q1)
-        valid = ordered.filter((F.col("event_ts") > q1) & (F.col("event_ts") <= q2))
-        test = ordered.filter(F.col("event_ts") > q2)
-        return train, valid, test
+        return (
+            ordered.filter(F.col("event_ts") <= q1),
+            ordered.filter((F.col("event_ts") > q1) & (F.col("event_ts") <= q2)),
+            ordered.filter(F.col("event_ts") > q2),
+        )
 
     hashed = ordered.withColumn("split_id", F.pmod(F.xxhash64("invoice_no", "customer_id"), F.lit(100)))
     return (
@@ -56,13 +52,13 @@ def temporal_split(df: DataFrame) -> Tuple[DataFrame, DataFrame, DataFrame]:
 
 def build_training_frame(df: DataFrame) -> DataFrame:
     transformed = BasketSignalTransformer().transform(df)
-
     idx_region = StringIndexer(inputCol="region", outputCol="region_idx", handleInvalid="keep")
     idx_country = StringIndexer(inputCol="country", outputCol="country_idx", handleInvalid="keep")
 
     region_model = idx_region.fit(transformed)
-    country_model = idx_country.fit(transformed)
-    indexed = country_model.transform(region_model.transform(transformed))
+    indexed = region_model.transform(transformed)
+    country_model = idx_country.fit(indexed)
+    indexed = country_model.transform(indexed)
 
     encoder = OneHotEncoder(
         inputCols=["region_idx", "country_idx"],
@@ -71,7 +67,7 @@ def build_training_frame(df: DataFrame) -> DataFrame:
     )
     encoded = encoder.fit(indexed).transform(indexed)
 
-    assembler = VectorAssembler(
+    assembled = VectorAssembler(
         inputCols=[
             "invoice_total",
             "total_units",
@@ -89,23 +85,20 @@ def build_training_frame(df: DataFrame) -> DataFrame:
         ],
         outputCol="features",
         handleInvalid="keep",
-    )
+    ).transform(encoded)
 
-    return assembler.transform(encoded).select("invoice_no", "customer_id", "invoice_ts", "target_repeat_30d", "features")
+    return assembled.select("invoice_no", "customer_id", "invoice_ts", "target_repeat_30d", "features")
 
 
 def evaluate_binary(predictions: DataFrame) -> Dict[str, float]:
     auc_eval = BinaryClassificationEvaluator(labelCol="target_repeat_30d", rawPredictionCol="rawPrediction")
     f1_eval = MulticlassClassificationEvaluator(labelCol="target_repeat_30d", predictionCol="prediction", metricName="f1")
-    return {
-        "auc": float(auc_eval.evaluate(predictions)),
-        "f1": float(f1_eval.evaluate(predictions)),
-    }
+    return {"auc": float(auc_eval.evaluate(predictions)), "f1": float(f1_eval.evaluate(predictions))}
 
 
 def run_sklearn_baseline(train_df: DataFrame, test_df: DataFrame, output_path: str) -> Dict[str, float]:
-    train_sample = train_df.sample(withReplacement=False, fraction=0.2, seed=42).toPandas()
-    test_sample = test_df.sample(withReplacement=False, fraction=0.2, seed=42).toPandas()
+    train_sample = train_df.sample(False, 0.2, 42).toPandas()
+    test_sample = test_df.sample(False, 0.2, 42).toPandas()
 
     if train_sample.empty or test_sample.empty:
         return {"sk_lr_auc": 0.0, "sk_lr_f1": 0.0, "sk_rf_auc": 0.0, "sk_rf_f1": 0.0}
@@ -135,7 +128,6 @@ def run_sklearn_baseline(train_df: DataFrame, test_df: DataFrame, output_path: s
     os.makedirs(output_path, exist_ok=True)
     with open(f"{output_path}/sklearn_models.pkl", "wb") as f:
         pickle.dump({"sk_lr": sk_lr, "sk_rf": sk_rf, "metrics": metrics}, f)
-
     return metrics
 
 
@@ -150,9 +142,7 @@ def main() -> None:
     spark.sparkContext.setCheckpointDir(args.checkpoint_dir)
 
     try:
-        base = spark.read.parquet(f"{args.gold_path}/model_features")
-        model_df = build_training_frame(base).checkpoint(eager=True)
-
+        model_df = build_training_frame(spark.read.parquet(f"{args.gold_path}/model_features")).checkpoint(eager=True)
         train_df, valid_df, test_df = temporal_split(model_df)
 
         lr = LogisticRegression(featuresCol="features", labelCol="target_repeat_30d", maxIter=120, regParam=0.03)
@@ -210,19 +200,10 @@ def main() -> None:
             input_path=f"{args.gold_path}/model_features",
             output_path=args.model_path,
             row_count=test_df.count(),
-            extra={
-                "dataset": "UCI Online Retail",
-                "target": "target_repeat_30d",
-                "algorithms": "LogisticRegression,RandomForestClassifier,GBTClassifier",
-            },
+            extra={"dataset": "UCI Online Retail", "target": "target_repeat_30d"},
         )
 
         print("ML training complete")
-        print("LR:", lr_metrics)
-        print("RF:", rf_metrics)
-        print("GBT:", gbt_metrics)
-        print("Tuned RF:", tuned_metrics)
-        print("Sklearn:", sklearn_metrics)
 
     except Exception as e:
         log_lineage(

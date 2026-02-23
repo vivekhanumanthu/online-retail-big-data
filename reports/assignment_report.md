@@ -1,4 +1,4 @@
-# PySpark Data Engineering, Distributed ML, and Tableau Assignment
+# Online Retail Assignment Report
 
 Dataset used: UCI Online Retail
 - Dataset page: `https://archive.ics.uci.edu/dataset/352/online+retail`
@@ -30,7 +30,7 @@ Dataset used: UCI Online Retail
 - Broadcast vs non-broadcast evidence produced by:
   - `src/02_compare_broadcast.py`
   - `outputs/tableau/broadcast_compare_csv/summary.csv`
-  - plan dumps in `artifacts/spark_ui/*.txt`
+  - `artifacts/spark_ui/*.txt`
 
 ## 2. Scalability and Distributed ML
 
@@ -87,14 +87,3 @@ Dataset used: UCI Online Retail
 - Stratified sampling for class balance checks.
 - Bootstrap confidence intervals for AUC in `src/05_evaluate.py`.
 - Business metric alignment via expected campaign profit function.
-
-## Reproducible Execution
-
-```bash
-python3 src/01_ingest.py --max_records 0
-python3 src/02_compare_broadcast.py --bronze_path outputs/bronze/online_retail
-python3 src/02_pipeline.py --bronze_path outputs/bronze/online_retail --gold_path outputs/gold --use_broadcast
-python3 src/03_ml.py
-python3 src/04_scaling.py
-python3 src/05_evaluate.py
-```

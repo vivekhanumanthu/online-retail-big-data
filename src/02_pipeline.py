@@ -78,14 +78,12 @@ def build_invoice_features(enriched: DataFrame) -> DataFrame:
     )
 
     w = Window.partitionBy("customer_id").orderBy("invoice_ts")
-    invoice = (
+    return (
         invoice.withColumn("next_invoice_ts", F.lead("invoice_ts").over(w))
         .withColumn("days_to_next_order", F.datediff("next_invoice_ts", "invoice_ts"))
         .withColumn("target_repeat_30d", F.when((F.col("days_to_next_order") >= 0) & (F.col("days_to_next_order") <= 30), 1).otherwise(0))
         .drop("next_invoice_ts")
     )
-
-    return invoice
 
 
 def build_metrics(enriched: DataFrame, invoice_features: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
@@ -121,22 +119,15 @@ def main() -> None:
     parser.add_argument("--gold_path", type=str, default="outputs/gold")
     parser.add_argument("--use_broadcast", action="store_true", help="Use broadcast join for country dimension")
     parser.add_argument("--save_plan", action="store_true", help="Save physical plan text for evidence")
-    parser.add_argument(
-        "--plan_output",
-        type=str,
-        default="artifacts/spark_ui/02_pipeline_plan.txt",
-        help="Path to save physical plan text when --save_plan is used",
-    )
+    parser.add_argument("--plan_output", type=str, default="artifacts/spark_ui/02_pipeline_plan.txt")
     args = parser.parse_args()
 
     join_mode = "broadcast" if args.use_broadcast else "no_broadcast"
     spark = build_spark(f"online-retail-pipeline-{join_mode}", shuffle_partitions=300)
 
     try:
-        run_start = time.perf_counter()
-        bronze_df = spark.read.parquet(args.bronze_path).repartition(200, "country")
-        bronze_df = bronze_df.persist(StorageLevel.MEMORY_AND_DISK)
-
+        start = time.perf_counter()
+        bronze_df = spark.read.parquet(args.bronze_path).repartition(200, "country").persist(StorageLevel.MEMORY_AND_DISK)
         enriched_df = clean_and_enrich(bronze_df, spark, use_broadcast=args.use_broadcast).persist(StorageLevel.MEMORY_AND_DISK)
         invoice_features = build_invoice_features(enriched_df).persist(StorageLevel.MEMORY_AND_DISK)
 
@@ -155,29 +146,21 @@ def main() -> None:
                 f.write(f"join_mode={join_mode}\n")
                 f.write("==== ENRICHED_DF PHYSICAL PLAN ====\n")
                 f.write(enriched_df._jdf.queryExecution().executedPlan().toString())
-                f.write("\n==== SALES_METRICS PHYSICAL PLAN ====\n")
-                f.write(sales_metrics._jdf.queryExecution().executedPlan().toString())
                 f.write("\n")
 
         curated_rows = enriched_df.count()
-        runtime_sec = time.perf_counter() - run_start
-
+        runtime_sec = time.perf_counter() - start
         log_lineage(
             pipeline_name="02_pipeline",
             input_path=args.bronze_path,
             output_path=args.gold_path,
             row_count=curated_rows,
-            extra={
-                "dataset": "UCI Online Retail",
-                "join_mode": join_mode,
-                "runtime_sec": f"{runtime_sec:.3f}",
-            },
+            extra={"dataset": "UCI Online Retail", "join_mode": join_mode, "runtime_sec": f"{runtime_sec:.3f}"},
         )
 
         bronze_df.unpersist()
         enriched_df.unpersist()
         invoice_features.unpersist()
-
         print(f"Pipeline finished. join_mode={join_mode}, curated_rows={curated_rows}, runtime_sec={runtime_sec:.3f}")
 
     except Exception as e:
