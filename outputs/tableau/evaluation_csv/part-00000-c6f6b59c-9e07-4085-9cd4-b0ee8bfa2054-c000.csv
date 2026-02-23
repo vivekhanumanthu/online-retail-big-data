@@ -1,0 +1,10 @@
+metric,value
+test_auc,0.6205911916370971
+test_f1,0.5290215988663001
+auc_ci_low_95,0.6015181516718253
+auc_ci_median,0.6215695191997287
+auc_ci_high_95,0.6328956018066995
+expected_profit,31610.0
+train_count,13829.0
+valid_count,2987.0
+test_count,3542.0

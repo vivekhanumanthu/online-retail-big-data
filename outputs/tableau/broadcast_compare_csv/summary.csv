@@ -1,0 +1,3 @@
+mode,success,runtime_sec,gold_path,plan_output,stdout_last_line,stderr_last_line
+broadcast,1,18.571,outputs/gold_compare/broadcast,artifacts/spark_ui/02_pipeline_plan_broadcast.txt,"Pipeline finished. join_mode=broadcast, curated_rows=396652, runtime_sec=14.655",[Stage 69:===================================================> (289 + 11) / 300]
+no_broadcast,1,17.308,outputs/gold_compare/no_broadcast,artifacts/spark_ui/02_pipeline_plan_no_broadcast.txt,"Pipeline finished. join_mode=no_broadcast, curated_rows=396652, runtime_sec=13.710",[Stage 40:=================================================>   (280 + 10) / 300]
